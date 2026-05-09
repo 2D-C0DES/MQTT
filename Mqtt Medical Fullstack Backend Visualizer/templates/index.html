@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>MQTT Medical Network Dashboard</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: white;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      text-align: center;
+      padding: 20px;
+      margin: 0;
+      font-size: 2rem;
+    }
+
+    .network {
+      display: flex;
+      justify-content: space-between;
+      padding: 30px;
+      position: relative;
+      min-height: 80vh;
+    }
+
+    .column {
+      width: 28%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .node {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      padding: 16px;
+      border-radius: 18px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+      position: relative;
+      transition: transform .3s ease;
+    }
+
+    .node:hover {
+      transform: scale(1.03);
+    }
+
+    .icon {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .broker {
+      align-self: center;
+      text-align: center;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: radial-gradient(circle, #38bdf8, #0284c7);
+      box-shadow: 0 0 40px rgba(56, 189, 248, .5);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.05);
+      }
+    }
+
+    .packet {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: fly 1.5s linear forwards;
+    }
+
+    @keyframes fly {
+      from {
+        opacity: 1;
+        transform: translate(0, 0);
+      }
+
+      to {
+        opacity: 0;
+        transform: translate(400px, 0);
+      }
+    }
+
+    .alert {
+      background: rgba(239, 68, 68, .2);
+      border-left: 4px solid #ef4444;
+      padding: 8px;
+      margin-top: 8px;
+      border-radius: 8px;
+      font-size: .9rem;
+    }
+
+    .status {
+      font-size: .85rem;
+      color: #1a3357;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>🏥 MQTT Remote Medical Diagnosis Network Dashboard</h1>
+
+  <div class="network">
+
+    <div class="column" id="patientsCol">
+      <h2>Patients</h2>
+    </div>
+
+    <div class="broker node">
+      <div class="icon">📡</div>
+      <div><b>MQTT Broker</b></div>
+      <div class="status">Routing Messages</div>
+    </div>
+
+    <div class="column">
+      <h2>Doctors</h2>
+
+      <div class="node">
+        <div class="icon">❤️</div>
+        <b>Cardiologist</b>
+        <div class="status">Topic: cardiology</div>
+        <div id="cardiology"></div>
+      </div>
+
+      <div class="node">
+        <div class="icon">🧠</div>
+        <b>Psychiatrist</b>
+        <div class="status">Topic: psychiatry</div>
+        <div id="psychiatry"></div>
+      </div>
+
+      <div class="node">
+        <div class="icon">🩺</div>
+        <b>General Physician</b>
+        <div class="status">Topic: general</div>
+        <div id="general"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const socket = io();
+    const patientsCol = document.getElementById('patientsCol');
+    const patientCards = {};
+
+    function animatePacket() {
+      const packet = document.createElement('div');
+      packet.className = 'packet';
+      packet.style.top = `${100 + Math.random() * 400}px`;
+      packet.style.left = '30%';
+      document.body.appendChild(packet);
+
+      setTimeout(() => packet.remove(), 1500);
+    }
+
+    socket.on('patient_update', data => {
+      animatePacket();
+
+      if (!patientCards[data.patient_id]) {
+        const div = document.createElement('div');
+        div.className = 'node';
+        patientCards[data.patient_id] = div;
+        patientsCol.appendChild(div);
+      }
+
+      patientCards[data.patient_id].innerHTML = `
+    <div class="icon">🧑</div>
+    <b>Patient ${data.patient_id}</b>
+    <div class="status">Publishing...</div>
+    <div>HR: ${data.heart_rate}</div>
+    <div>BP: ${data.bp}</div>
+    <div>Mood: ${data.mood}</div>
+    <div>Sleep: ${data.sleep}</div>
+    <div>Temp: ${data.temp}</div>
+    <div>Fatigue: ${data.fatigue}</div>
+  `;
+    });
+
+    socket.on('doctor_alert', data => {
+      const docDiv = document.getElementById(data.doctor);
+      const alert = document.createElement('div');
+      alert.className = 'alert';
+      alert.innerHTML = `<b>${data.patient_id}</b>: ${data.response}`;
+      docDiv.prepend(alert);
+
+      setTimeout(() => alert.remove(), 7000);
+    });
+  </script>
+
+</body>
+
+</html>

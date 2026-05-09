@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MQTT Health Monitor Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg:         #0a0e1a;
+    --surface:    #111827;
+    --surface2:   #1a2236;
+    --border:     #1e2d45;
+    --accent:     #00d4ff;
+    --accent2:    #7c3aed;
+    --green:      #10b981;
+    --yellow:     #f59e0b;
+    --red:        #ef4444;
+    --text:       #e2e8f0;
+    --muted:      #64748b;
+    --font-mono:  'JetBrains Mono', monospace;
+    --font-ui:    'Space Grotesk', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+    padding: 24px;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0,212,255,0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(124,58,237,0.06), transparent);
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: grid; place-items: center;
+    font-size: 18px;
+  }
+
+  h1 {
+    font-size: 20px; font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  h1 span { color: var(--accent); }
+
+  .live-badge {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 500;
+    color: var(--green);
+    font-family: var(--font-mono);
+  }
+  .live-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%; background: var(--green);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    transition: border-color .2s;
+  }
+  .stat-card:hover { border-color: var(--accent); }
+
+  .stat-label {
+    font-size: 11px; font-weight: 500; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-size: 28px; font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1;
+  }
+  .stat-value.green  { color: var(--green);  }
+  .stat-value.yellow { color: var(--yellow); }
+  .stat-value.red    { color: var(--red);    }
+  .stat-value.accent { color: var(--accent); }
+
+  /* ── Grid layout ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .grid-full { grid-column: 1 / -1; }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .panel-title {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.8px;
+  }
+
+  .panel-icon {
+    width: 28px; height: 28px; border-radius: 7px;
+    display: grid; place-items: center; font-size: 13px;
+  }
+  .icon-blue   { background: rgba(0,212,255,0.15); }
+  .icon-green  { background: rgba(16,185,129,0.15); }
+  .icon-purple { background: rgba(124,58,237,0.15); }
+  .icon-amber  { background: rgba(245,158,11,0.15); }
+
+  .panel-count {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--muted); padding: 2px 8px;
+    background: var(--bg); border-radius: 20px;
+    border: 1px solid var(--border);
+  }
+
+  .panel-body { padding: 16px 20px; }
+
+  /* ── Patient cards ── */
+  #patients-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 16px 20px;
+  }
+
+  .patient-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    transition: border-color .2s, transform .2s;
+  }
+  .patient-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .patient-card.alert { border-color: var(--red); animation: flash 1s ease 3; }
+
+  @keyframes flash {
+    0%,100% { border-color: var(--red); }
+    50%      { border-color: rgba(239,68,68,0.3); }
+  }
+
+  .patient-pid {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    color: var(--accent); margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .alert-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+    color: var(--red); padding: 2px 6px;
+    background: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 4px;
+  }
+
+  .vital-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .vital-row:last-child { border-bottom: none; }
+  .vital-key  { color: var(--muted); }
+  .vital-val  { font-family: var(--font-mono); font-weight: 500; }
+  .vital-val.ok      { color: var(--green);  }
+  .vital-val.warning { color: var(--yellow); }
+  .vital-val.danger  { color: var(--red);    }
+
+  /* ── Log feed ── */
+  #log-feed {
+    height: 280px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .log-entry {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    animation: fadeIn .3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+
+  .log-time  { color: var(--muted); white-space: nowrap; min-width: 84px; }
+  .log-topic {
+    min-width: 100px;
+    padding: 1px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+    text-align: center;
+  }
+  .topic-status     { background: rgba(0,212,255,0.12); color: var(--accent); }
+  .topic-symptoms   { background: rgba(124,58,237,0.12); color: #a78bfa; }
+  .topic-medication { background: rgba(16,185,129,0.12); color: var(--green); }
+  .topic-wellness   { background: rgba(245,158,11,0.12); color: var(--yellow); }
+
+  .log-pid   { color: var(--text); font-weight: 500; }
+  .log-msg   { color: var(--muted); flex: 1; }
+  .log-enc   { color: rgba(100,116,139,0.5); font-size: 10px; }
+  .log-alert { color: var(--red); font-weight: 600; }
+  .log-ok    { color: var(--green); }
+
+  /* ── Alert panel ── */
+  #alert-list {
+    max-height: 200px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+
+  .alert-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--red);
+    background: rgba(239,68,68,0.05);
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 8px;
+    font-size: 12px;
+    animation: fadeIn .3s ease;
+  }
+  .alert-item-icon { font-size: 14px; }
+  .alert-item-text { flex: 1; }
+  .alert-item-pid  { font-family: var(--font-mono); color: var(--red); font-weight: 600; }
+  .alert-item-time { color: var(--muted); font-size: 10px; font-family: var(--font-mono); }
+
+  .empty-state {
+    text-align: center; padding: 30px;
+    color: var(--muted); font-size: 13px;
+  }
+
+  /* ── Crypto demo panel ── */
+  .crypto-demo {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+  }
+  @media (max-width: 700px) { .crypto-demo { grid-template-columns: 1fr; } }
+
+  .crypto-box {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px;
+  }
+  .crypto-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+  }
+  .crypto-val {
+    font-family: var(--font-mono); font-size: 10px;
+    word-break: break-all; line-height: 1.6;
+    color: var(--accent);
+  }
+  .crypto-val.plain { color: var(--green); }
+  .crypto-val.key   { color: var(--yellow); }
+
+  /* ── Connection status ── */
+  #conn-status {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--red);
+  }
+  #conn-status.connected { color: var(--green); }
+  #conn-status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+
+  .qos-selector {
+    display: flex; gap: 6px;
+  }
+  .qos-btn {
+    padding: 4px 10px; border-radius: 6px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); font-family: var(--font-mono);
+    font-size: 11px; cursor: pointer; transition: all .15s;
+  }
+  .qos-btn.active {
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(0,212,255,0.08);
+  }
+  .qos-btn:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏥</div>
+    <div>
+      <h1>MQTT <span>Health Monitor</span></h1>
+      <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+        IoT Remote Medical Diagnosis · OTP Encrypted
+      </div>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center; gap:20px;">
+    <div class="qos-selector">
+      <button class="qos-btn" onclick="setQoS(0)">QoS 0</button>
+      <button class="qos-btn active" onclick="setQoS(1)">QoS 1</button>
+      <button class="qos-btn" onclick="setQoS(2)">QoS 2</button>
+    </div>
+    <div id="conn-status">
+      <div id="conn-status-dot"></div>
+      <span id="conn-status-text">Disconnected</span>
+    </div>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      LIVE
+    </div>
+  </div>
+</header>
+
+<!-- Stats bar -->
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="stat-label">Total Messages</div>
+    <div class="stat-value accent" id="stat-total">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Active Patients</div>
+    <div class="stat-value green" id="stat-patients">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Alerts Raised</div>
+    <div class="stat-value red" id="stat-alerts">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Integrity Checks</div>
+    <div class="stat-value green" id="stat-integrity">✓ 100%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Msgs / sec</div>
+    <div class="stat-value yellow" id="stat-rate">0.0</div>
+  </div>
+</div>
+
+<!-- Row 1: Patients + Alerts -->
+<div class="grid" style="margin-bottom:16px;">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-icon icon-blue">👤</div>
+        Patient Status
+      </div>
+      <span class="panel-count" id="patient-count">0 online</span>
+    </div>
+    <div id="patients-grid">
+      <div class="empty-state">Waiting for patient data…</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-icon icon-amber">🚨</div>
+        Active Alerts
+      </div>
+      <span class="panel-count" id="alert-count">0 alerts</span>
+    </div>
+    <div class="panel-body">
+      <div id="alert-list">
+        <div class="empty-state">No alerts — all patients stable ✓</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Row 2: Message Log -->
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <div class="panel-icon icon-purple">📡</div>
+      Live Message Feed
+    </div>
+    <span class="panel-count" id="log-count">0 messages</span>
+  </div>
+  <div class="panel-body">
+    <div id="log-feed">
+      <div class="empty-state">Waiting for MQTT messages…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Row 3: Crypto demo -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <div class="panel-icon icon-green">🔐</div>
+      OTP Encryption Demo — Last Message
+    </div>
+    <span style="font-size:11px; color:var(--muted); font-family:var(--font-mono);">XOR + SHA-256</span>
+  </div>
+  <div class="panel-body">
+    <div class="crypto-demo">
+      <div class="crypto-box">
+        <div class="crypto-label">Plaintext</div>
+        <div class="crypto-val plain" id="crypto-plain">—</div>
+      </div>
+      <div class="crypto-box">
+        <div class="crypto-label">OTP Key (Base64)</div>
+        <div class="crypto-val key" id="crypto-key">—</div>
+      </div>
+      <div class="crypto-box">
+        <div class="crypto-label">Ciphertext (Base64)</div>
+        <div class="crypto-val" id="crypto-cipher">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  Dashboard state
+// ═══════════════════════════════════════════════════════════════════
+const state = {
+  patients:   {},   // pid → latest vitals data
+  alerts:     [],   // list of alert objects
+  totalMsgs:  0,
+  intFail:    0,
+  qos:        1,
+  msgTimestamps: [],
+};
+
+let ws = null;
+
+// ═══════════════════════════════════════════════════════════════════
+//  WebSocket connection to the Python bridge
+// ═══════════════════════════════════════════════════════════════════
+function connect() {
+  ws = new WebSocket("ws://localhost:8765");
+
+  ws.onopen = () => {
+    document.getElementById("conn-status").classList.add("connected");
+    document.getElementById("conn-status-text").textContent = "Connected";
+  };
+
+  ws.onclose = () => {
+    document.getElementById("conn-status").classList.remove("connected");
+    document.getElementById("conn-status-text").textContent = "Disconnected";
+    // Retry after 3s
+    setTimeout(connect, 3000);
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      handleMessage(msg);
+    } catch(e) { console.error("Parse error:", e); }
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Message handler
+// ═══════════════════════════════════════════════════════════════════
+function handleMessage(msg) {
+  state.totalMsgs++;
+  state.msgTimestamps.push(Date.now());
+  // keep only last 10s of timestamps for rate calc
+  const cutoff = Date.now() - 10000;
+  state.msgTimestamps = state.msgTimestamps.filter(t => t > cutoff);
+
+  const { topic, data, integrity_ok, encrypted_preview } = msg;
+
+  if (!integrity_ok) state.intFail++;
+
+  // Update crypto demo
+  if (data && encrypted_preview) {
+    document.getElementById("crypto-plain").textContent   = JSON.stringify(data).slice(0, 120) + "…";
+    document.getElementById("crypto-key").textContent     = encrypted_preview.key   || "—";
+    document.getElementById("crypto-cipher").textContent  = encrypted_preview.ciphertext || "—";
+  }
+
+  // Route by topic
+  if (topic === "health/status" && data) {
+    updatePatient(data, integrity_ok);
+  }
+
+  if (data?.alert) {
+    addAlert(data);
+  }
+
+  addLogEntry(topic, data, integrity_ok);
+  updateStats();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Patient cards
+// ═══════════════════════════════════════════════════════════════════
+function updatePatient(data, integrity_ok) {
+  const pid = data.patient_id;
+  state.patients[pid] = { ...data, integrity_ok, updated: Date.now() };
+  renderPatients();
+}
+
+function renderPatients() {
+  const grid = document.getElementById("patients-grid");
+  const pids = Object.keys(state.patients);
+
+  document.getElementById("patient-count").textContent = pids.length + " online";
+
+  if (pids.length === 0) return;
+
+  grid.innerHTML = pids.map(pid => {
+    const p = state.patients[pid];
+    const v = p.vitals || {};
+    const alert = p.alert;
+
+    const hrClass   = alert ? "danger"  : "ok";
+    const spo2Class = alert ? "danger"  : "ok";
+    const tempClass = alert ? "warning" : "ok";
+
+    return `
+    <div class="patient-card ${alert ? 'alert' : ''}">
+      <div class="patient-pid">
+        ${pid}
+        ${alert ? '<span class="alert-badge">⚠ ALERT</span>' : ''}
+      </div>
+      <div class="vital-row">
+        <span class="vital-key">Heart Rate</span>
+        <span class="vital-val ${hrClass}">${v.heart_rate_bpm || '?'} bpm</span>
+      </div>
+      <div class="vital-row">
+        <span class="vital-key">SpO2</span>
+        <span class="vital-val ${spo2Class}">${v.spo2_percent || '?'}%</span>
+      </div>
+      <div class="vital-row">
+        <span class="vital-key">Temp</span>
+        <span class="vital-val ${tempClass}">${v.temperature_c || '?'}°C</span>
+      </div>
+      <div class="vital-row">
+        <span class="vital-key">BP</span>
+        <span class="vital-val ${hrClass}">${v.blood_pressure || '?'}</span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Alerts
+// ═══════════════════════════════════════════════════════════════════
+function addAlert(data) {
+  const alert = {
+    pid:  data.patient_id,
+    time: new Date().toLocaleTimeString(),
+    vitals: data.vitals || {},
+  };
+  state.alerts.unshift(alert);
+  if (state.alerts.length > 20) state.alerts.pop();
+  renderAlerts();
+}
+
+function renderAlerts() {
+  const list = document.getElementById("alert-list");
+  document.getElementById("alert-count").textContent = state.alerts.length + " alerts";
+
+  if (state.alerts.length === 0) {
+    list.innerHTML = '<div class="empty-state">No alerts — all patients stable ✓</div>';
+    return;
+  }
+
+  list.innerHTML = state.alerts.map(a => `
+    <div class="alert-item">
+      <div class="alert-item-icon">🚨</div>
+      <div class="alert-item-text">
+        <div><span class="alert-item-pid">${a.pid}</span> — Abnormal vitals detected</div>
+        <div style="color:var(--muted);font-size:10px;margin-top:2px;">
+          HR: ${a.vitals.heart_rate_bpm || '?'} bpm ·
+          SpO2: ${a.vitals.spo2_percent || '?'}% ·
+          Temp: ${a.vitals.temperature_c || '?'}°C
+        </div>
+      </div>
+      <div class="alert-item-time">${a.time}</div>
+    </div>
+  `).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Log feed
+// ═══════════════════════════════════════════════════════════════════
+const LOG_MAX = 100;
+let logCount = 0;
+
+function addLogEntry(topic, data, integrity_ok) {
+  const feed = document.getElementById("log-feed");
+
+  if (logCount === 0) feed.innerHTML = "";
+  logCount++;
+
+  const topicKey  = topic.split("/")[1] || "status";
+  const topicClass = `topic-${topicKey}`;
+  const pid  = data?.patient_id || "???";
+  const time = new Date().toLocaleTimeString("en-US", { hour12: false });
+  const intTag = integrity_ok
+    ? '<span class="log-ok">✓</span>'
+    : '<span class="log-alert">✗ TAMPERED</span>';
+
+  const summary = buildSummary(topic, data);
+
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.innerHTML = `
+    <span class="log-time">${time}</span>
+    <span class="log-topic ${topicClass}">${topic}</span>
+    <span class="log-pid">${pid}</span>
+    <span class="log-msg">${summary}</span>
+    <span>${intTag}</span>
+  `;
+
+  feed.prepend(entry);
+
+  // trim old entries
+  while (feed.children.length > LOG_MAX) feed.removeChild(feed.lastChild);
+
+  document.getElementById("log-count").textContent = logCount + " messages";
+}
+
+function buildSummary(topic, data) {
+  if (!data) return "—";
+  const v = data.vitals || {};
+  if (topic === "health/status")
+    return `HR=${v.heart_rate_bpm} SpO2=${v.spo2_percent}% T=${v.temperature_c}°C ${data.alert ? '🚨' : ''}`;
+  if (topic === "health/symptoms")
+    return `${data.symptom || '?'} (${data.severity || '?'})`;
+  if (topic === "health/medication")
+    return `${data.medication || '?'} ${data.dose || ''} — ${data.taken ? '✓ taken' : '✗ missed'}`;
+  if (topic === "health/wellness")
+    return `Sleep ${data.sleep_hours}h · Stress: ${data.stress_level}`;
+  return JSON.stringify(data).slice(0, 60);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Stats
+// ═══════════════════════════════════════════════════════════════════
+function updateStats() {
+  document.getElementById("stat-total").textContent    = state.totalMsgs;
+  document.getElementById("stat-patients").textContent = Object.keys(state.patients).length;
+  document.getElementById("stat-alerts").textContent   = state.alerts.length;
+
+  const intPct = state.totalMsgs > 0
+    ? Math.round((1 - state.intFail / state.totalMsgs) * 100)
+    : 100;
+  document.getElementById("stat-integrity").textContent = `✓ ${intPct}%`;
+
+  const rate = (state.msgTimestamps.length / 10).toFixed(1);
+  document.getElementById("stat-rate").textContent = rate;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  QoS selector
+// ═══════════════════════════════════════════════════════════════════
+function setQoS(level) {
+  state.qos = level;
+  document.querySelectorAll(".qos-btn").forEach((b, i) => {
+    b.classList.toggle("active", i === level);
+  });
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ cmd: "set_qos", qos: level }));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════════════════════
+connect();
+</script>
+</body>
+</html>
